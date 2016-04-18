@@ -28,7 +28,9 @@ func New(provider string, p *ProviderData) Provider {
 		return NewAzureProvider(p)
 	case "gitlab":
 		return NewGitLabProvider(p)
-	default:
+	case "google":
 		return NewGoogleProvider(p)
+	default:
+		return NewDWBNProvider(p)
 	}
 }
