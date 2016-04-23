@@ -17,4 +17,6 @@ type ProviderData struct {
 	ApprovalPrompt    string
 }
 
-func (p *ProviderData) Data() *ProviderData { return p }
+func (p *ProviderData) Data() *ProviderData {
+	return p
+}

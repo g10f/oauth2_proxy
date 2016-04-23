@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bitly/oauth2_proxy/cookie"
+	"github.com/g10f/oauth2_proxy/cookie"
 	"github.com/bmizerany/assert"
 )
 
@@ -23,11 +23,11 @@ func TestSessionStateSerialization(t *testing.T) {
 		ExpiresOn:    time.Now().Add(time.Duration(1) * time.Hour),
 		RefreshToken: "refresh4321",
 	}
-	encoded, err := s.EncodeSessionState(c)
+	encoded, err := s.EncodeSessionState(c, secret)
 	assert.Equal(t, nil, err)
 	assert.Equal(t, 3, strings.Count(encoded, "|"))
 
-	ss, err := DecodeSessionState(encoded, c)
+	ss, err := DecodeSessionState(encoded, c, secret)
 	t.Logf("%#v", ss)
 	assert.Equal(t, nil, err)
 	assert.Equal(t, s.Email, ss.Email)
@@ -36,7 +36,7 @@ func TestSessionStateSerialization(t *testing.T) {
 	assert.Equal(t, s.RefreshToken, ss.RefreshToken)
 
 	// ensure a different cipher can't decode properly (ie: it gets gibberish)
-	ss, err = DecodeSessionState(encoded, c2)
+	ss, err = DecodeSessionState(encoded, c2, secret)
 	t.Logf("%#v", ss)
 	assert.Equal(t, nil, err)
 	assert.Equal(t, s.Email, ss.Email)
@@ -53,12 +53,12 @@ func TestSessionStateSerializationNoCipher(t *testing.T) {
 		ExpiresOn:    time.Now().Add(time.Duration(1) * time.Hour),
 		RefreshToken: "refresh4321",
 	}
-	encoded, err := s.EncodeSessionState(nil)
+	encoded, err := s.EncodeSessionState(nil, secret)
 	assert.Equal(t, nil, err)
 	assert.Equal(t, s.Email, encoded)
 
 	// only email should have been serialized
-	ss, err := DecodeSessionState(encoded, nil)
+	ss, err := DecodeSessionState(encoded, nil, secret)
 	assert.Equal(t, nil, err)
 	assert.Equal(t, s.Email, ss.Email)
 	assert.Equal(t, "", ss.AccessToken)

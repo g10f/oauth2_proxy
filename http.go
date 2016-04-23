@@ -36,7 +36,7 @@ func (s *Server) ServeHTTP() {
 	default:
 		networkType = u.Scheme
 	}
-	listenAddr := strings.TrimPrefix(u.String(), u.Scheme+"://")
+	listenAddr := strings.TrimPrefix(u.String(), u.Scheme + "://")
 
 	listener, err := net.Listen(networkType, listenAddr)
 	if err != nil {

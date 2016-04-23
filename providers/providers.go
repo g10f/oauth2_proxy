@@ -1,36 +1,21 @@
 package providers
 
 import (
-	"github.com/bitly/oauth2_proxy/cookie"
+	"github.com/g10f/oauth2_proxy/cookie"
 )
 
 type Provider interface {
 	Data() *ProviderData
 	GetEmailAddress(*SessionState) (string, error)
 	Redeem(string, string) (*SessionState, error)
-	ValidateGroup(string) bool
+	ValidateRole(string) bool
 	ValidateSessionState(*SessionState) bool
 	GetLoginURL(redirectURI, finalRedirect string) string
 	RefreshSessionIfNeeded(*SessionState) (bool, error)
-	SessionFromCookie(string, *cookie.Cipher) (*SessionState, error)
-	CookieForSession(*SessionState, *cookie.Cipher) (string, error)
+	SessionFromCookie(string, *cookie.Cipher, string) (*SessionState, error)
+	CookieForSession(*SessionState, *cookie.Cipher, string) (string, error)
 }
 
 func New(provider string, p *ProviderData) Provider {
-	switch provider {
-	case "myusa":
-		return NewMyUsaProvider(p)
-	case "linkedin":
-		return NewLinkedInProvider(p)
-	case "github":
-		return NewGitHubProvider(p)
-	case "azure":
-		return NewAzureProvider(p)
-	case "gitlab":
-		return NewGitLabProvider(p)
-	case "google":
-		return NewGoogleProvider(p)
-	default:
-		return NewDWBNProvider(p)
-	}
+	return NewDWBNProvider(p)
 }

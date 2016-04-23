@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/bitly/oauth2_proxy/cookie"
+	"github.com/g10f/oauth2_proxy/cookie"
 )
 
 func (p *ProviderData) Redeem(redirectURL, code string) (s *SessionState, err error) {
@@ -96,13 +96,13 @@ func (p *ProviderData) GetLoginURL(redirectURI, finalRedirect string) string {
 }
 
 // CookieForSession serializes a session state for storage in a cookie
-func (p *ProviderData) CookieForSession(s *SessionState, c *cookie.Cipher) (string, error) {
-	return s.EncodeSessionState(c)
+func (p *ProviderData) CookieForSession(s *SessionState, c *cookie.Cipher, secret string) (string, error) {
+	return s.EncodeSessionState(c, secret)
 }
 
 // SessionFromCookie deserializes a session from a cookie value
-func (p *ProviderData) SessionFromCookie(v string, c *cookie.Cipher) (s *SessionState, err error) {
-	return DecodeSessionState(v, c)
+func (p *ProviderData) SessionFromCookie(v string, c *cookie.Cipher, secret string) (s *SessionState, err error) {
+	return DecodeSessionState(v, c, secret)
 }
 
 func (p *ProviderData) GetEmailAddress(s *SessionState) (string, error) {
@@ -111,7 +111,7 @@ func (p *ProviderData) GetEmailAddress(s *SessionState) (string, error) {
 
 // ValidateGroup validates that the provided email exists in the configured provider
 // email group(s).
-func (p *ProviderData) ValidateGroup(email string) bool {
+func (p *ProviderData) ValidateRole(role string) bool {
 	return true
 }
 

@@ -36,7 +36,7 @@ func Validate(cookie *http.Cookie, seed string, expiration time.Duration) (value
 		// creation timestamp stored in the cookie falls within the
 		// window defined by (Now()-expiration, Now()].
 		t = time.Unix(int64(ts), 0)
-		if t.After(time.Now().Add(expiration*-1)) && t.Before(time.Now().Add(time.Minute*5)) {
+		if t.After(time.Now().Add(expiration * -1)) && t.Before(time.Now().Add(time.Minute * 5)) {
 			// it's a valid cookie. now get the contents
 			rawValue, err := base64.URLEncoding.DecodeString(parts[0])
 			if err == nil {
@@ -95,7 +95,7 @@ func NewCipher(secret string) (*Cipher, error) {
 
 // Encrypt a value for use in a cookie
 func (c *Cipher) Encrypt(value string) (string, error) {
-	ciphertext := make([]byte, aes.BlockSize+len(value))
+	ciphertext := make([]byte, aes.BlockSize + len(value))
 	iv := ciphertext[:aes.BlockSize]
 	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
 		return "", fmt.Errorf("failed to create initialization vector %s", err)
@@ -114,8 +114,8 @@ func (c *Cipher) Decrypt(s string) (string, error) {
 	}
 
 	if len(encrypted) < aes.BlockSize {
-		return "", fmt.Errorf("encrypted cookie value should be "+
-			"at least %d bytes, but is only %d bytes",
+		return "", fmt.Errorf("encrypted cookie value should be " +
+		"at least %d bytes, but is only %d bytes",
 			aes.BlockSize, len(encrypted))
 	}
 

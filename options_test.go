@@ -16,7 +16,6 @@ func testOptions() *Options {
 	o.CookieSecret = "foobar"
 	o.ClientID = "bazquux"
 	o.ClientSecret = "xyzzyplugh"
-	o.EmailDomains = []string{"*"}
 	return o
 }
 
@@ -29,7 +28,6 @@ func errorMsg(msgs []string) string {
 
 func TestNewOptions(t *testing.T) {
 	o := NewOptions()
-	o.EmailDomains = []string{"*"}
 	err := o.Validate()
 	assert.NotEqual(t, nil, err)
 
@@ -38,32 +36,6 @@ func TestNewOptions(t *testing.T) {
 		"missing setting: cookie-secret",
 		"missing setting: client-id",
 		"missing setting: client-secret"})
-	assert.Equal(t, expected, err.Error())
-}
-
-func TestGoogleGroupOptions(t *testing.T) {
-	o := testOptions()
-	o.GoogleGroups = []string{"googlegroup"}
-	err := o.Validate()
-	assert.NotEqual(t, nil, err)
-
-	expected := errorMsg([]string{
-		"missing setting: google-admin-email",
-		"missing setting: google-service-account-json"})
-	assert.Equal(t, expected, err.Error())
-}
-
-func TestGoogleGroupInvalidFile(t *testing.T) {
-	o := testOptions()
-	o.GoogleGroups = []string{"test_group"}
-	o.GoogleAdminEmail = "admin@example.com"
-	o.GoogleServiceAccountJSON = "file_doesnt_exist.json"
-	err := o.Validate()
-	assert.NotEqual(t, nil, err)
-
-	expected := errorMsg([]string{
-		"invalid Google credentials file: file_doesnt_exist.json",
-	})
 	assert.Equal(t, expected, err.Error())
 }
 
@@ -115,9 +87,9 @@ func TestCompiledRegexError(t *testing.T) {
 
 	expected := errorMsg([]string{
 		"error compiling regex=\"(foobaz\" error parsing regexp: " +
-			"missing closing ): `(foobaz`",
+		"missing closing ): `(foobaz`",
 		"error compiling regex=\"barquux)\" error parsing regexp: " +
-			"unexpected ): `barquux)`"})
+		"unexpected ): `barquux)`"})
 	assert.Equal(t, expected, err.Error())
 }
 
@@ -125,12 +97,12 @@ func TestDefaultProviderApiSettings(t *testing.T) {
 	o := testOptions()
 	assert.Equal(t, nil, o.Validate())
 	p := o.provider.Data()
-	assert.Equal(t, "https://accounts.google.com/o/oauth2/auth?access_type=offline",
+	assert.Equal(t, "https://sso.dwbn.org/oauth2/authorize/",
 		p.LoginURL.String())
-	assert.Equal(t, "https://www.googleapis.com/oauth2/v3/token",
+	assert.Equal(t, "https://sso.dwbn.org/oauth2/token/",
 		p.RedeemURL.String())
 	assert.Equal(t, "", p.ProfileURL.String())
-	assert.Equal(t, "profile email", p.Scope)
+	assert.Equal(t, "openid profile email", p.Scope)
 }
 
 func TestPassAccessTokenRequiresSpecificCookieSecretLengths(t *testing.T) {
@@ -180,14 +152,14 @@ func TestValidateSignatureKeyInvalidSpec(t *testing.T) {
 	o := testOptions()
 	o.SignatureKey = "invalid spec"
 	err := o.Validate()
-	assert.Equal(t, err.Error(), "Invalid configuration:\n"+
-		"  invalid signature hash:key spec: "+o.SignatureKey)
+	assert.Equal(t, err.Error(), "Invalid configuration:\n" +
+	"  invalid signature hash:key spec: " + o.SignatureKey)
 }
 
 func TestValidateSignatureKeyUnsupportedAlgorithm(t *testing.T) {
 	o := testOptions()
 	o.SignatureKey = "unsupported:default secret"
 	err := o.Validate()
-	assert.Equal(t, err.Error(), "Invalid configuration:\n"+
-		"  unsupported signature hash algorithm: "+o.SignatureKey)
+	assert.Equal(t, err.Error(), "Invalid configuration:\n" +
+	"  unsupported signature hash algorithm: " + o.SignatureKey)
 }

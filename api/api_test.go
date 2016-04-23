@@ -83,7 +83,7 @@ func TestRequestUnparsedResponseUsingAccessTokenParameter(t *testing.T) {
 	defer backend.Close()
 
 	response, err := RequestUnparsedResponse(
-		backend.URL+"?access_token=my_token", nil)
+		backend.URL + "?access_token=my_token", nil)
 	assert.Equal(t, nil, err)
 	assert.Equal(t, 200, response.StatusCode)
 	body, err := ioutil.ReadAll(response.Body)
@@ -98,7 +98,7 @@ func TestRequestUnparsedResponseUsingAccessTokenParameterFailedResponse(t *testi
 	backend.Close()
 
 	response, err := RequestUnparsedResponse(
-		backend.URL+"?access_token=my_token", nil)
+		backend.URL + "?access_token=my_token", nil)
 	assert.NotEqual(t, nil, err)
 	assert.Equal(t, (*http.Response)(nil), response)
 }

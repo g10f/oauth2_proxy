@@ -2,19 +2,24 @@ package providers
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
+	//"log"
 
-	"github.com/bitly/oauth2_proxy/cookie"
+	"github.com/g10f/oauth2_proxy/cookie"
+	"github.com/dgrijalva/jwt-go"
 )
 
 type SessionState struct {
+	Issuer       string
 	AccessToken  string
 	ExpiresOn    time.Time
+	IssuedAt     time.Time
 	RefreshToken string
 	Email        string
 	User         string
+	Subject      string
+	Roles        string
+	UserName     string
 }
 
 func (s *SessionState) IsExpired() bool {
@@ -24,25 +29,36 @@ func (s *SessionState) IsExpired() bool {
 	return false
 }
 
-func (s *SessionState) String() string {
-	o := fmt.Sprintf("Session{%s", s.userOrEmail())
-	if s.AccessToken != "" {
-		o += " token:true"
-	}
-	if !s.ExpiresOn.IsZero() {
-		o += fmt.Sprintf(" expires:%s", s.ExpiresOn)
-	}
-	if s.RefreshToken != "" {
-		o += " refresh_token:true"
-	}
-	return o + "}"
-}
+func (s *SessionState) EncodeSessionState(c *cookie.Cipher, secret string) (string, error) {
+	token := jwt.New(jwt.SigningMethodHS256)
+	token.Claims["sub"] = s.User
+	token.Claims["email"] = s.Email
+	token.Claims["name"] = s.UserName
+	token.Claims["roles"] = s.Roles
+	token.Claims["exp"] = s.ExpiresOn.Unix()
 
-func (s *SessionState) EncodeSessionState(c *cookie.Cipher) (string, error) {
 	if c == nil || s.AccessToken == "" {
-		return s.userOrEmail(), nil
+		return token.SignedString([]byte(secret))
 	}
-	return s.EncryptedString(c)
+	var err error
+	a := s.AccessToken
+	if a != "" {
+		a, err = c.Encrypt(a)
+		if err != nil {
+			return "", err
+		}
+		token.Claims["a"] = a
+
+	}
+	r := s.RefreshToken
+	if r != "" {
+		r, err = c.Encrypt(r)
+		if err != nil {
+			return "", err
+		}
+		token.Claims["r"] = r
+	}
+	return token.SignedString([]byte(secret))
 }
 
 func (s *SessionState) userOrEmail() string {
@@ -53,63 +69,38 @@ func (s *SessionState) userOrEmail() string {
 	return u
 }
 
-func (s *SessionState) EncryptedString(c *cookie.Cipher) (string, error) {
-	var err error
-	if c == nil {
-		panic("error. missing cipher")
-	}
-	a := s.AccessToken
-	if a != "" {
-		a, err = c.Encrypt(a)
-		if err != nil {
-			return "", err
+func DecodeSessionState(v string, c *cookie.Cipher, secret string) (s *SessionState, err error) {
+	token, err := jwt.Parse(v, func(token *jwt.Token) (interface{}, error) {
+		if token.Header["alg"].(string) != "HS256" {
+			return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
 		}
-	}
-	r := s.RefreshToken
-	if r != "" {
-		r, err = c.Encrypt(r)
-		if err != nil {
-			return "", err
-		}
-	}
-	return fmt.Sprintf("%s|%s|%d|%s", s.userOrEmail(), a, s.ExpiresOn.Unix(), r), nil
-}
-
-func DecodeSessionState(v string, c *cookie.Cipher) (s *SessionState, err error) {
-	chunks := strings.Split(v, "|")
-	if len(chunks) == 1 {
-		if strings.Contains(chunks[0], "@") {
-			u := strings.Split(v, "@")[0]
-			return &SessionState{Email: v, User: u}, nil
-		}
-		return &SessionState{User: v}, nil
-	}
-
-	if len(chunks) != 4 {
-		err = fmt.Errorf("invalid number of fields (got %d expected 4)", len(chunks))
+		return []byte(secret), nil
+	})
+	claims := token.Claims
+	user, ok := claims["sub"].(string)
+	if !ok {
+		err = fmt.Errorf("No sub in claims %v", claims)
 		return
 	}
-
-	s = &SessionState{}
-	if c != nil && chunks[1] != "" {
-		s.AccessToken, err = c.Decrypt(chunks[1])
+	email, _ := claims["email"].(string)
+	name, _ := claims["name"].(string)
+	roles, _ := claims["roles"].(string)
+	a, ok := claims["a"].(string)
+	if ok {
+		a, err = c.Decrypt(a)
 		if err != nil {
 			return nil, err
 		}
 	}
-	if c != nil && chunks[3] != "" {
-		s.RefreshToken, err = c.Decrypt(chunks[3])
+	r, ok := claims["r"].(string)
+	if ok {
+		r, err = c.Decrypt(r)
 		if err != nil {
 			return nil, err
 		}
 	}
-	if u := chunks[0]; strings.Contains(u, "@") {
-		s.Email = u
-		s.User = strings.Split(u, "@")[0]
-	} else {
-		s.User = u
-	}
-	ts, _ := strconv.Atoi(chunks[2])
-	s.ExpiresOn = time.Unix(int64(ts), 0)
-	return
+	exp, _ := claims["exp"].(float64)
+	expiresOn := time.Unix(int64(exp), 0)
+	s = &SessionState{User: user, UserName: name, Email: email, AccessToken: a, ExpiresOn: expiresOn, RefreshToken: r, Roles: roles}
+	return s, nil
 }

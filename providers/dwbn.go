@@ -3,10 +3,11 @@ package providers
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
+	//"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -62,6 +63,14 @@ func NewDWBNProvider(p *ProviderData) *DWBNProvider {
 	}
 }
 
+func jwtDecodeSegment(seg string) ([]byte, error) {
+	if l := len(seg) % 4; l > 0 {
+		seg += strings.Repeat("=", 4 - l)
+	}
+
+	return base64.URLEncoding.DecodeString(seg)
+}
+
 func dwbnIdTokenFromIdToken(idToken string) (*DWBNIdToken, error) {
 	// id_token is a base64 encode ID token payload
 	// https://developers.google.com/accounts/docs/OAuth2Login#obtainuserinfo
@@ -72,7 +81,6 @@ func dwbnIdTokenFromIdToken(idToken string) (*DWBNIdToken, error) {
 	}
 	dwbnIdToken := DWBNIdToken{}
 	err = json.Unmarshal(b, &dwbnIdToken)
-	log.Printf("dwbnIdToken: %v", dwbnIdToken)
 	if err != nil {
 		return nil, err
 	}
@@ -123,20 +131,26 @@ func (p *DWBNProvider) Redeem(redirectURL, code string) (s *SessionState, err er
 		ExpiresIn    int64  `json:"expires_in"`
 		IdToken      string `json:"id_token"`
 	}
+	//log.Printf("body: %s", body)
 	err = json.Unmarshal(body, &jsonResponse)
 	if err != nil {
 		return
 	}
+
 	dwbnIdToken, err := dwbnIdTokenFromIdToken(jsonResponse.IdToken)
 	if err != nil {
 		return
 	}
 	s = &SessionState{
+		Issuer: dwbnIdToken.Iss,
 		AccessToken:  jsonResponse.AccessToken,
 		ExpiresOn:    time.Now().Add(time.Duration(jsonResponse.ExpiresIn) * time.Second).Truncate(time.Second),
 		RefreshToken: jsonResponse.RefreshToken,
 		Email:        dwbnIdToken.Email,
-		User:         dwbnIdToken.Sub,
+		UserName:     dwbnIdToken.Name,
+		User:         dwbnIdToken.Sub + "@" + dwbnIdToken.Iss,
+		Subject:      dwbnIdToken.Sub,
+		Roles:        dwbnIdToken.Roles,
 	}
 	return
 }

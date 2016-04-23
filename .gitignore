@@ -28,3 +28,9 @@ dist
 
 # Editor swap/temp files
 .*.swp
+
+access.log
+Caddyfile
+oauth2_proxy.cfg
+Unnamed
+gin-bin

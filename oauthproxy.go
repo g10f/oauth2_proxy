@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"html/template"
@@ -15,8 +14,8 @@ import (
 	"time"
 
 	"github.com/18F/hmacauth"
-	"github.com/bitly/oauth2_proxy/cookie"
-	"github.com/bitly/oauth2_proxy/providers"
+	"github.com/g10f/oauth2_proxy/cookie"
+	"github.com/g10f/oauth2_proxy/providers"
 )
 
 const SignatureHeader = "GAP-Signature"
@@ -35,14 +34,14 @@ var SignatureHeaders []string = []string{
 }
 
 type OAuthProxy struct {
-	CookieSeed     string
-	CookieName     string
-	CookieDomain   string
-	CookieSecure   bool
-	CookieHttpOnly bool
-	CookieExpire   time.Duration
-	CookieRefresh  time.Duration
-	Validator      func(string) bool
+	CookieSeed        string
+	CookieName        string
+	CookieDomain      string
+	CookieSecure      bool
+	CookieHttpOnly    bool
+	CookieExpire      time.Duration
+	CookieRefresh     time.Duration
+	Validator         func(string) bool
 
 	RobotsPath        string
 	PingPath          string
@@ -51,20 +50,17 @@ type OAuthProxy struct {
 	OAuthCallbackPath string
 	AuthOnlyPath      string
 
-	redirectURL         *url.URL // the url to receive requests at
-	provider            providers.Provider
-	ProxyPrefix         string
-	SignInMessage       string
-	HtpasswdFile        *HtpasswdFile
-	DisplayHtpasswdForm bool
-	serveMux            http.Handler
-	PassBasicAuth       bool
-	BasicAuthPassword   string
-	PassAccessToken     bool
-	CookieCipher        *cookie.Cipher
-	skipAuthRegex       []string
-	compiledRegex       []*regexp.Regexp
-	templates           *template.Template
+	redirectURL       *url.URL // the url to receive requests at
+	provider          providers.Provider
+	ProxyPrefix       string
+	SignInMessage     string
+	serveMux          http.Handler
+	PassAccessToken   bool
+	CookieCipher      *cookie.Cipher
+	signatureData     *SignatureData
+	skipAuthRegex     []string
+	compiledRegex     []*regexp.Regexp
+	templates         *template.Template
 }
 
 type UpstreamProxy struct {
@@ -108,12 +104,11 @@ func NewFileServer(path string, filesystemPath string) (proxy http.Handler) {
 	return http.StripPrefix(path, http.FileServer(http.Dir(filesystemPath)))
 }
 
-func NewOAuthProxy(opts *Options, validator func(string) bool) *OAuthProxy {
+func NewOAuthProxy(opts *Options) *OAuthProxy {
 	serveMux := http.NewServeMux()
 	var auth hmacauth.HmacAuth
 	if sigData := opts.signatureData; sigData != nil {
-		auth = hmacauth.NewHmacAuth(sigData.hash, []byte(sigData.key),
-			SignatureHeader, SignatureHeaders)
+		auth = hmacauth.NewHmacAuth(sigData.hash, []byte(sigData.key), SignatureHeader, SignatureHeaders)
 	}
 	for _, u := range opts.proxyURLs {
 		path := u.Path
@@ -127,8 +122,7 @@ func NewOAuthProxy(opts *Options, validator func(string) bool) *OAuthProxy {
 			} else {
 				setProxyDirector(proxy)
 			}
-			serveMux.Handle(path,
-				&UpstreamProxy{u.Host, proxy, auth})
+			serveMux.Handle(path, &UpstreamProxy{u.Host, proxy, auth})
 		case "file":
 			if u.Fragment != "" {
 				path = u.Fragment
@@ -164,8 +158,8 @@ func NewOAuthProxy(opts *Options, validator func(string) bool) *OAuthProxy {
 		var err error
 		cipher, err = cookie.NewCipher(opts.CookieSecret)
 		if err != nil {
-			log.Fatal("error creating AES cipher with "+
-				"cookie-secret ", opts.CookieSecret, ": ", err)
+			log.Fatal("error creating AES cipher with " +
+			"cookie-secret ", opts.CookieSecret, ": ", err)
 		}
 	}
 
@@ -177,7 +171,6 @@ func NewOAuthProxy(opts *Options, validator func(string) bool) *OAuthProxy {
 		CookieHttpOnly: opts.CookieHttpOnly,
 		CookieExpire:   opts.CookieExpire,
 		CookieRefresh:  opts.CookieRefresh,
-		Validator:      validator,
 
 		RobotsPath:        "/robots.txt",
 		PingPath:          "/ping",
@@ -192,10 +185,9 @@ func NewOAuthProxy(opts *Options, validator func(string) bool) *OAuthProxy {
 		redirectURL:       redirectURL,
 		skipAuthRegex:     opts.SkipAuthRegex,
 		compiledRegex:     opts.CompiledRegex,
-		PassBasicAuth:     opts.PassBasicAuth,
-		BasicAuthPassword: opts.BasicAuthPassword,
 		PassAccessToken:   opts.PassAccessToken,
 		CookieCipher:      cipher,
+		signatureData:       opts.signatureData,
 		templates:         loadTemplates(opts.CustomTemplatesDir),
 	}
 }
@@ -216,10 +208,6 @@ func (p *OAuthProxy) GetRedirectURI(host string) string {
 	}
 	u.Host = host
 	return u.String()
-}
-
-func (p *OAuthProxy) displayCustomLoginForm() bool {
-	return p.HtpasswdFile != nil && p.DisplayHtpasswdForm
 }
 
 func (p *OAuthProxy) redeemCode(host, code string) (s *providers.SessionState, err error) {
@@ -265,7 +253,7 @@ func (p *OAuthProxy) MakeCookie(req *http.Request, value string, expiration time
 }
 
 func (p *OAuthProxy) ClearCookie(rw http.ResponseWriter, req *http.Request) {
-	http.SetCookie(rw, p.MakeCookie(req, "", time.Hour*-1, time.Now()))
+	http.SetCookie(rw, p.MakeCookie(req, "", time.Hour * -1, time.Now()))
 }
 
 func (p *OAuthProxy) SetCookie(rw http.ResponseWriter, req *http.Request, val string) {
@@ -284,7 +272,7 @@ func (p *OAuthProxy) LoadCookiedSession(req *http.Request) (*providers.SessionSt
 		return nil, age, errors.New("Cookie Signature not valid")
 	}
 
-	session, err := p.provider.SessionFromCookie(val, p.CookieCipher)
+	session, err := p.provider.SessionFromCookie(val, p.CookieCipher, p.CookieSeed)
 	if err != nil {
 		return nil, age, err
 	}
@@ -294,7 +282,7 @@ func (p *OAuthProxy) LoadCookiedSession(req *http.Request) (*providers.SessionSt
 }
 
 func (p *OAuthProxy) SaveSession(rw http.ResponseWriter, req *http.Request, s *providers.SessionState) error {
-	value, err := p.provider.CookieForSession(s, p.CookieCipher)
+	value, err := p.provider.CookieForSession(s, p.CookieCipher, p.CookieSeed)
 	if err != nil {
 		return err
 	}
@@ -346,29 +334,11 @@ func (p *OAuthProxy) SignInPage(rw http.ResponseWriter, req *http.Request, code 
 	}{
 		ProviderName:  p.provider.Data().ProviderName,
 		SignInMessage: p.SignInMessage,
-		CustomLogin:   p.displayCustomLoginForm(),
 		Redirect:      redirect_url,
 		Version:       VERSION,
 		ProxyPrefix:   p.ProxyPrefix,
 	}
 	p.templates.ExecuteTemplate(rw, "sign_in.html", t)
-}
-
-func (p *OAuthProxy) ManualSignIn(rw http.ResponseWriter, req *http.Request) (string, bool) {
-	if req.Method != "POST" || p.HtpasswdFile == nil {
-		return "", false
-	}
-	user := req.FormValue("username")
-	passwd := req.FormValue("password")
-	if user == "" {
-		return "", false
-	}
-	// check auth
-	if p.HtpasswdFile.Validate(user, passwd) {
-		log.Printf("authenticated %q via HtpasswdFile", user)
-		return user, true
-	}
-	return "", false
 }
 
 func (p *OAuthProxy) GetRedirect(req *http.Request) (string, error) {
@@ -427,20 +397,7 @@ func (p *OAuthProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (p *OAuthProxy) SignIn(rw http.ResponseWriter, req *http.Request) {
-	redirect, err := p.GetRedirect(req)
-	if err != nil {
-		p.ErrorPage(rw, 500, "Internal Error", err.Error())
-		return
-	}
-
-	user, ok := p.ManualSignIn(rw, req)
-	if ok {
-		session := &providers.SessionState{User: user}
-		p.SaveSession(rw, req, session)
-		http.Redirect(rw, req, redirect, 302)
-	} else {
-		p.SignInPage(rw, req, 200)
-	}
+	p.SignInPage(rw, req, 200)
 }
 
 func (p *OAuthProxy) OAuthStart(rw http.ResponseWriter, req *http.Request) {
@@ -481,8 +438,8 @@ func (p *OAuthProxy) OAuthCallback(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	// set cookie, or deny
-	if p.Validator(session.Email) && p.provider.ValidateGroup(session.Email) {
-		log.Printf("%s authentication complete %s", remoteAddr, session)
+	if p.provider.ValidateRole(session.Roles) {
+		//log.Printf("%s authentication complete %s", remoteAddr, session)
 		err := p.SaveSession(rw, req, session)
 		if err != nil {
 			log.Printf("%s %s", remoteAddr, err)
@@ -555,13 +512,6 @@ func (p *OAuthProxy) Authenticate(rw http.ResponseWriter, req *http.Request) int
 		}
 	}
 
-	if session != nil && session.Email != "" && !p.Validator(session.Email) {
-		log.Printf("%s Permission Denied: removing session %s", remoteAddr, session)
-		session = nil
-		saveSession = false
-		clearSession = true
-	}
-
 	if saveSession && session != nil {
 		err := p.SaveSession(rw, req, session)
 		if err != nil {
@@ -575,58 +525,23 @@ func (p *OAuthProxy) Authenticate(rw http.ResponseWriter, req *http.Request) int
 	}
 
 	if session == nil {
-		session, err = p.CheckBasicAuth(req)
-		if err != nil {
-			log.Printf("%s %s", remoteAddr, err)
-		}
-	}
-
-	if session == nil {
 		return http.StatusForbidden
 	}
 
 	// At this point, the user is authenticated. proxy normally
-	if p.PassBasicAuth {
-		req.SetBasicAuth(session.User, p.BasicAuthPassword)
-		req.Header["X-Forwarded-User"] = []string{session.User}
-		if session.Email != "" {
-			req.Header["X-Forwarded-Email"] = []string{session.Email}
-		}
-	}
 	if p.PassAccessToken && session.AccessToken != "" {
-		req.Header["X-Forwarded-Access-Token"] = []string{session.AccessToken}
+		req.Header["X-Auth-Access-Token"] = []string{session.AccessToken}
 	}
+
+	req.Header["X-Auth-User"] = []string{session.User}
+	req.Header["X-Auth-Email"] = []string{session.Email}
+	req.Header["X-Auth-Name"] = []string{session.UserName}
+	req.Header["X-Auth-Roles"] = []string{session.Roles}
+
 	if session.Email == "" {
 		rw.Header().Set("GAP-Auth", session.User)
 	} else {
 		rw.Header().Set("GAP-Auth", session.Email)
 	}
 	return http.StatusAccepted
-}
-
-func (p *OAuthProxy) CheckBasicAuth(req *http.Request) (*providers.SessionState, error) {
-	if p.HtpasswdFile == nil {
-		return nil, nil
-	}
-	auth := req.Header.Get("Authorization")
-	if auth == "" {
-		return nil, nil
-	}
-	s := strings.SplitN(auth, " ", 2)
-	if len(s) != 2 || s[0] != "Basic" {
-		return nil, fmt.Errorf("invalid Authorization header %s", req.Header.Get("Authorization"))
-	}
-	b, err := base64.StdEncoding.DecodeString(s[1])
-	if err != nil {
-		return nil, err
-	}
-	pair := strings.SplitN(string(b), ":", 2)
-	if len(pair) != 2 {
-		return nil, fmt.Errorf("invalid format %s", b)
-	}
-	if p.HtpasswdFile.Validate(pair[0], pair[1]) {
-		log.Printf("authenticated %q via basic auth", pair[0])
-		return &providers.SessionState{User: pair[0]}, nil
-	}
-	return nil, fmt.Errorf("%s not in HtpasswdFile", pair[0])
 }
